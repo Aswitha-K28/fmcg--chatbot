@@ -1,0 +1,92 @@
+source: companies is table('mysql:companies') {
+  primary_key: company_id
+}
+
+source: brands is table('mysql:brands') {
+  primary_key: brand_id
+  join_one: companies with company_id
+}
+
+source: categories is table('mysql:categories') {
+  primary_key: category_id
+}
+
+source: subcategories is table('mysql:subcategories') {
+  primary_key: subcategory_id
+  join_one: categories with category_id
+}
+
+source: products is table('mysql:products') {
+  primary_key: product_id
+  join_one: brands with brand_id
+  join_one: categories with category_id
+  join_one: subcategories with subcategory_id
+}
+
+source: zones is table('mysql:zones') {
+  primary_key: zone_id
+}
+
+source: regions is table('mysql:regions') {
+  primary_key: region_id
+  join_one: zones with zone_id
+}
+
+source: distributors is table('mysql:distributors') {
+  primary_key: distributor_id
+  join_one: regions with region_id
+}
+
+source: sales is table('mysql:sales') {
+  primary_key: sale_id
+  join_one: products with product_id
+  join_one: regions with region_id
+  join_one: distributors with distributor_id
+
+  measure: total_revenue is sum(revenue)
+  measure: total_units is sum(units_sold)
+  measure: avg_discount is avg(discount_pct)
+  measure: total_cogs is sum(cogs)
+  measure: gross_profit is total_revenue - total_cogs
+}
+
+source: marketing_campaigns is table('mysql:marketing_campaigns') {
+  primary_key: campaign_id
+  join_one: brands with brand_id
+  join_one: products with product_id
+  join_one: regions with region_id
+
+  measure: total_budget is sum(budget_cr)
+  measure: total_spend is sum(spend_cr)
+  measure: avg_roi is avg(roi_pct)
+  measure: avg_sales_lift is avg(sales_lift_pct)
+}
+
+source: sales_targets is table('mysql:sales_targets') {
+  primary_key: target_id
+  join_one: brands with brand_id
+  join_one: regions with region_id
+
+  measure: total_target_revenue is sum(target_revenue)
+  measure: total_achieved_revenue is sum(achieved_revenue)
+  measure: avg_achievement_pct is avg(achievement_pct)
+}
+
+source: inventory is table('mysql:inventory') {
+  primary_key: inventory_id
+  join_one: products with product_id
+}
+
+source: pricing_promotions is table('mysql:pricing_promotions') {
+  primary_key: pricing_id
+  join_one: products with product_id
+  join_one: regions with region_id
+}
+
+source: consumer_feedback is table('mysql:consumer_feedback') {
+  primary_key: feedback_id
+  join_one: products with product_id
+  join_one: regions with region_id
+
+  measure: avg_rating is avg(rating)
+}
