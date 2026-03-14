@@ -3,14 +3,15 @@ import json
 import asyncio
 import sys
 
-# --- OTEL INSTRUMENTATION MUST BE FIRST ---
+# --- OTEL INSTRUMENTATION (Must be first) ---
 from openinference.instrumentation.langchain import LangChainInstrumentor
 try:
-    os.environ["PHOENIX_COLLECTOR_HTTP_ENDPOINT"] = "http://localhost:6006/v1/traces"
+    # Use gRPC (Port 4317) as it's more standard for local Phoenix OTLP
+    os.environ["PHOENIX_COLLECTOR_ENDPOINT"] = "http://localhost:4317"
     LangChainInstrumentor().instrument()
-    print("LangChain instrumentation active. Exporting to http://localhost:6006/v1/traces")
+    print("✅ LangChain Observability active (Exporting to http://localhost:4317)")
 except Exception as e:
-    print(f"Observability initialization failed: {e}")
+    print(f"❌ Observability initialization failed: {e}")
 # ------------------------------------------
 
 from fastapi import FastAPI, Request

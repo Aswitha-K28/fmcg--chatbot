@@ -2,14 +2,14 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 import os
-# --- OTEL INSTRUMENTATION MUST BE FIRST ---
+# --- OTEL INSTRUMENTATION (Must be first) ---
 from openinference.instrumentation.langchain import LangChainInstrumentor
 try:
-    os.environ["PHOENIX_COLLECTOR_HTTP_ENDPOINT"] = "http://localhost:6006/v1/traces"
+    os.environ["PHOENIX_COLLECTOR_ENDPOINT"] = "http://localhost:4317"
     LangChainInstrumentor().instrument()
-    print("MCP Tool instrumentation active. Exporting to http://localhost:6006/v1/traces")
+    print("✅ MCP Tool instrumentation active (Exporting to http://localhost:4317)")
 except Exception as e:
-    print(f"MCP Observability initialization failed: {e}")
+    print(f"❌ MCP Observability initialization failed: {e}")
 # ------------------------------------------
 
 from services.llm_service import LLMService
