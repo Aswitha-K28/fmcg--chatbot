@@ -44,7 +44,7 @@ The system follows a decoupled, service-oriented architecture designed for scala
         │                                   └──────────┬──────────┘
         │                                              │
         │                                   ┌──────────▼──────────┐
-        └──────────────────────────────────►│ Data Layer (DuckDB) │
+        └──────────────────────────────────►│ Data Layer (MySQL)  │
                                             └─────────────────────┘
 ```
 
@@ -140,7 +140,7 @@ We utilize a **Tool Calling Agent** pattern.
 
 The Services layer is the "Engine Room."
 - **LLM Service**: Uses Few-Shot prompting to ensure the LLM consistently generates valid Malloy syntax and extracts intent into predictable JSON structures.
-- **Search Service**: Implements a hybrid search. It uses keyword matching for quick lookups and graph traversal (via simulated objects) to find relationships (e.g., finding the Zone ID for a specific Region).
+- **Search Service**: Implements a **Parallel Parallel Search (RRF)**. It executes Keyword (BM25), Graph (Node2Vec), and Semantic (FAISS) searches concurrently, then fuses the rankings using Reciprocal Rank Fusion to identify the most relevant database tables for the query.
 
 ---
 
@@ -197,7 +197,7 @@ The system uses a **Producer-Consumer** pattern across threads:
 3.  **Entity Linking**: Mapping text to DB IDs.
 4.  **Semantic Translation**: Generating Malloy DSL.
 5.  **Compilation**: Malloy transpiles to SQL.
-6.  **Execution**: SQL runs on DuckDB.
+6.  **Execution**: SQL runs on MySQL.
 7.  **NL Generation**: Turning JSON data into a human-friendly answer.
 
 ---
