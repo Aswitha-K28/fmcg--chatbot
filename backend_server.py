@@ -3,13 +3,26 @@ import json
 import asyncio
 import sys
 
+# Must be set BEFORE everything
+os.environ["PHOENIX_PROJECT_NAME"] = "fmcg-chatbot-backend"
+os.environ["PHOENIX_COLLECTOR_ENDPOINT"] = "http://localhost:6006"
+
 # --- OTEL INSTRUMENTATION (Must be first) ---
+from phoenix.otel import register
 from openinference.instrumentation.langchain import LangChainInstrumentor
+from opentelemetry import context as otel_context
+from opentelemetry.context import attach, detach
+from opentelemetry import trace
+
 try:
-    # Use gRPC (Port 4317) as it's more standard for local Phoenix OTLP
-    os.environ["PHOENIX_COLLECTOR_ENDPOINT"] = "http://localhost:4317"
-    LangChainInstrumentor().instrument()
-    print("✅ LangChain Observability active (Exporting to http://localhost:4317)")
+    tracer_provider = register(
+        project_name="fmcg-chatbot-backend",
+        endpoint="http://localhost:6006/v1/traces",
+        batch=True,
+        verbose=True
+    )
+    LangChainInstrumentor().instrument(tracer_provider=tracer_provider)
+    print("✅ LangChain Observability active (fmcg-chatbot-backend)")
 except Exception as e:
     print(f"❌ Observability initialization failed: {e}")
 # ------------------------------------------
@@ -20,13 +33,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from agents.supervisor_agent import create_supervisor_agent
 from langchain.callbacks.base import BaseCallbackHandler
 from typing import Any, Dict, List
-import phoenix as px
 
 VERSION = "v4.1"
 
 app = FastAPI(title=f"FMCG BI Chatbot Backend {VERSION}")
 
-# Enable CORS for React frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -34,9 +45,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Initialize agent ONCE at global level
-print("Connecting to Arize Phoenix Observability...")
 
 print(f"--- backend_server.py {VERSION} Global Startup ---")
 try:
@@ -54,9 +62,8 @@ class StreamThinkingHandler(BaseCallbackHandler):
 
     def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs: Any) -> None:
         tool_name = serialized.get("name", "Tool")
-        # Use call_soon_threadsafe to interact with the queue from a different thread
         self.loop.call_soon_threadsafe(
-            self.queue.put_nowait, 
+            self.queue.put_nowait,
             json.dumps({"type": "thinking", "step": tool_name})
         )
 
@@ -65,7 +72,7 @@ async def chat_endpoint(request: Request):
     data = await request.json()
     user_query = data.get("query")
     print(f"--- New Query ({VERSION}): {user_query} ---")
-    
+
     async def event_generator():
         if global_agent is None:
             yield f"data: {json.dumps({'type': 'error', 'message': 'Agent not initialized'})}\n\n"
@@ -74,16 +81,22 @@ async def chat_endpoint(request: Request):
         queue = asyncio.Queue()
         loop = asyncio.get_event_loop()
         handler = StreamThinkingHandler(queue, loop)
-        
+
         async def run_agent():
             try:
-                # Use the global agent
-                # The callback handler will use self.loop to communicate safely
-                result = await asyncio.to_thread(
-                    global_agent.invoke,
-                    {"input": user_query},
-                    {"callbacks": [handler]}
-                )
+                ctx = otel_context.get_current()  # capture context before threading
+
+                def invoke_with_context():
+                    token = attach(ctx)            # re-attach in the new thread
+                    try:
+                        return global_agent.invoke(
+                            {"input": user_query},
+                            {"callbacks": [handler]}
+                        )
+                    finally:
+                        detach(token)
+
+                result = await asyncio.to_thread(invoke_with_context)
                 final_answer = result.get("output", "")
                 await queue.put(json.dumps({"type": "content", "text": final_answer}))
                 await queue.put(json.dumps({"type": "done"}))
@@ -102,6 +115,13 @@ async def chat_endpoint(request: Request):
             yield f"data: {item}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+@app.on_event("shutdown")
+async def shutdown():
+    provider = trace.get_tracer_provider()
+    if hasattr(provider, "force_flush"):
+        provider.force_flush(timeout_millis=5000)
+        print("✅ Traces flushed on shutdown")
 
 if __name__ == "__main__":
     import uvicorn

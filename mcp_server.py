@@ -1,17 +1,29 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-
 import os
+import asyncio
+
+# Must be set BEFORE everything
+os.environ["PHOENIX_PROJECT_NAME"] = "fmcg-chatbot-tools"
+os.environ["PHOENIX_COLLECTOR_ENDPOINT"] = "http://localhost:6006"
+
 # --- OTEL INSTRUMENTATION (Must be first) ---
+from phoenix.otel import register
 from openinference.instrumentation.langchain import LangChainInstrumentor
+
 try:
-    os.environ["PHOENIX_COLLECTOR_ENDPOINT"] = "http://localhost:4317"
-    LangChainInstrumentor().instrument()
-    print("✅ MCP Tool instrumentation active (Exporting to http://localhost:4317)")
+    tracer_provider = register(
+        project_name="fmcg-chatbot-tools",
+        endpoint="http://localhost:6006/v1/traces",
+        batch=True,
+        verbose=True
+    )
+    LangChainInstrumentor().instrument(tracer_provider=tracer_provider)
+    print("✅ MCP Tool instrumentation active (fmcg-chatbot-tools)")
 except Exception as e:
     print(f"❌ MCP Observability initialization failed: {e}")
 # ------------------------------------------
 
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 from services.llm_service import LLMService
 from services.search_service import SearchService
 import uvicorn
@@ -23,11 +35,9 @@ search_service = SearchService()
 
 @app.on_event("startup")
 async def startup():
-    # Only build once
     if not search_service.docs:
-        search_service.build_index()
+        await asyncio.to_thread(search_service.build_index)
 
-# Detailed schema context for legacy/smaller models
 FULL_SCHEMA_CONTEXT = """
 TABLES & COLUMNS:
 - brands (brand_id, brand_name, company_id)
@@ -80,13 +90,9 @@ async def extract_intent(request: QueryRequest):
 @app.post("/tools/schematic_search")
 async def schematic_search(request: QueryRequest):
     try:
-        # Re-extract intent for context if not provided
         intent_raw = llm_service.extract_intent(request.query)
         intent_json = parse_llm_json(intent_raw)
-        
-        # Call the new parallel search orchestrator
         fused_tables = await search_service.parallel_search(request.query, intent_json, top_k=5)
-        
         return {
             "query": request.query,
             "intent_extracted": intent_json,
@@ -99,8 +105,8 @@ async def schematic_search(request: QueryRequest):
 async def generate_malloy(request: MalloyRequest):
     try:
         malloy_code = llm_service.generate_malloy(
-            request.query, 
-            FULL_SCHEMA_CONTEXT, 
+            request.query,
+            FULL_SCHEMA_CONTEXT,
             request.context
         )
         return {"malloy_code": malloy_code}
