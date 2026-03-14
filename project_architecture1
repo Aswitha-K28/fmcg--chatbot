@@ -1,0 +1,142 @@
+# FMCG BI Chatbot — System Architecture
+
+## Full Architecture Diagram
+
+```mermaid
+flowchart TD
+    User(["👤 User\nbrowser"])
+
+    subgraph Frontend ["⚛️ React Frontend  (port 3000)"]
+        UI["Chat UI\ntalk2data/src/App.js"]
+        Hook["useChat.js\n(Redux state manager)"]
+        SSEService["backendService.js\n(SSE stream reader)"]
+        Store["chatSlice.js\n(Redux store:\nmessages / thinkingSteps)"]
+    end
+
+    subgraph Backend ["🐍 backend_server.py  (FastAPI · port 8002)"]
+        FastAPI["POST /chat\n(StreamingResponse SSE)"]
+        ThinkingHandler["StreamThinkingHandler\non_tool_start → isNew:true\non_tool_end  → isNew:false"]
+        Agent["Supervisor Agent\n(LangChain · llama-3.3-70b)"]
+    end
+
+    subgraph MCP ["🔧 mcp_server.py  (FastAPI · port 8000)"]
+        IntentEP["POST /tools/extract_intent\nLLM → JSON intent + entities\n(llama-3.1-8b-instant)"]
+        SearchEP["POST /tools/schematic_search\nIntent → Parallel Search → RRF Fusion"]
+        MalloyGenEP["POST /tools/generate_malloy\nIntent + Schema → Malloy DSL\n(llama-3.3-70b)"]
+
+        subgraph SearchService ["services/search_service.py"]
+            BM25["BM25 Search\n(keyword exact match)"]
+            FAISS["FAISS Search\n(semantic / vector)"]
+            N2V["Node2Vec Search\n(Neo4j graph traversal)"]
+            RRF["RRF Fusion\n(ranked table list)"]
+        end
+    end
+
+    subgraph Tools ["🛠️ LangChain Tools  (tools/)"]
+        T1["intent_entity_tool.py\n→ calls /extract_intent"]
+        T2["search_tool.py\n→ calls /schematic_search"]
+        T3["malloy_generator_tool.py\n→ calls /generate_malloy"]
+        T4["malloy_executor_tool.py\n(local — no HTTP)"]
+    end
+
+    subgraph Execution ["▶️ malloy_executor_tool.py"]
+        Translate["Malloy → MySQL\n(LLM translation · llama-3.3-70b)"]
+        MySQL[("MySQL\nfmcg_database")]
+    end
+
+    subgraph Infra ["📡 Infrastructure"]
+        Phoenix["Arize Phoenix\nObservability UI\n(port 6006)"]
+        Neo4j[("Neo4j\nGraph DB\n(table relationships)")]
+        MalloyModel["models/fmcg.malloy\n(semantic schema:\ntotal_revenue, etc.)"]
+        Env[".env / config.py\n(API keys · DB creds)"]
+    end
+
+    %% User → Frontend
+    User -->|"types query"| UI
+    UI --> Hook
+    Hook --> SSEService
+    SSEService -->|"POST /chat"| FastAPI
+
+    %% Backend SSE loop
+    FastAPI --> ThinkingHandler
+    FastAPI --> Agent
+    ThinkingHandler -->|"SSE events (thinking)"| SSEService
+    Agent -->|"final answer (content)"| FastAPI
+
+    %% Agent → Tools
+    Agent -->|"1. invoke"| T1
+    Agent -->|"2. invoke"| T2
+    Agent -->|"3. invoke"| T3
+    Agent -->|"4. invoke"| T4
+
+    %% Tools → MCP
+    T1 --> IntentEP
+    T2 --> SearchEP
+    T3 --> MalloyGenEP
+
+    %% MCP internal
+    SearchEP --> BM25
+    SearchEP --> FAISS
+    SearchEP --> N2V
+    BM25 & FAISS & N2V --> RRF
+
+    %% Execution
+    T4 --> Translate
+    Translate -->|"SQL query"| MySQL
+    MySQL -->|"JSON rows"| Translate
+
+    %% Infra connections
+    N2V -.->|"MATCH queries"| Neo4j
+    MalloyGenEP -.->|"schema reference"| MalloyModel
+    Translate -.->|"schema reference"| MalloyModel
+    Backend -.->|"OTLP traces"| Phoenix
+    MCP -.->|"OTLP traces"| Phoenix
+    Env -.-> Backend
+    Env -.-> MCP
+```
+
+---
+
+## Layer Summary
+
+| Layer | Files | Technology |
+|-------|-------|-----------|
+| **Frontend** | `talk2data/src/` | React, Redux, SSE |
+| **Backend Gateway** | `backend_server.py` | FastAPI, LangChain callbacks |
+| **Supervisor Agent** | `agents/supervisor_agent.py` | LangChain, Groq `llama-3.3-70b` |
+| **Tool Layer** | `tools/*.py` | LangChain `@tool` decorators |
+| **MCP Tool Server** | `mcp_server.py` | FastAPI on port 8000 |
+| **Search Service** | `services/search_service.py` | BM25, FAISS, Node2Vec, RRF |
+| **LLM Service** | `services/llm_service.py` | Groq SDK (fast + smart models) |
+| **Execution** | `tools/malloy_executor_tool.py` | Groq LLM + `mysql-connector` |
+| **Semantic Schema** | `models/fmcg.malloy` | Malloy DSL |
+| **Databases** | MySQL + Neo4j | `fmcg_database`, graph relations |
+| **Observability** | Phoenix on port 6006 | OpenTelemetry / OTLP |
+| **Config** | `.env`, `utils/config.py` | Environment variables |
+
+---
+
+## LLM Usage Map
+
+| Task | Model | Where |
+|------|-------|-------|
+| Intent extraction | `llama-3.1-8b-instant` (fast) | `llm_service.extract_intent()` |
+| Malloy generation | `llama-3.3-70b-versatile` (smart) | `llm_service.generate_malloy()` |
+| Malloy → SQL translation | `llama-3.3-70b-versatile` (smart) | `malloy_executor_tool.translate_malloy_to_sql()` |
+| Agent reasoning | `llama-3.3-70b-versatile` (smart) | `supervisor_agent.py` |
+
+---
+
+## Parallel Search Detail
+
+```mermaid
+flowchart LR
+    Q["User Query + Intent JSON"]
+    Q --> B["BM25\n(keyword rank)"]
+    Q --> F["FAISS\n(vector cosine sim)"]
+    Q --> N["Node2Vec\n(Neo4j graph walk)"]
+    B --> R["RRF Fusion\n(1 / rank + 60)"]
+    F --> R
+    N --> R
+    R --> Tables["Top-K Table Names\ne.g. [sales, brands, regions]"]
+```
