@@ -10,13 +10,13 @@ GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 MYSQL_CONFIG = {
     "host": "localhost",
     "user": "root",
-    "password": "Aswitha@12",
+    "password": "your_password",
     "database": "fmcg_database"
 }
 
 # Neo4j Configuration
 NEO4J_CONFIG = {
-    "uri": "neo4j+s://46991046.databases.neo4j.io",
-    "user": "46991046",
-    "password": "bT3ebt7nA6Cbz3CofkpdMfKBgVxUW7vJmpJOKverdu8"
+    "uri": "your uri",
+    "user": "user",
+    "password": "your password"
 }
