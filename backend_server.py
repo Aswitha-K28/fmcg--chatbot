@@ -2,12 +2,24 @@ import os
 import json
 import asyncio
 import sys
+
+# --- OTEL INSTRUMENTATION MUST BE FIRST ---
+from openinference.instrumentation.langchain import LangChainInstrumentor
+try:
+    os.environ["PHOENIX_COLLECTOR_HTTP_ENDPOINT"] = "http://localhost:6006/v1/traces"
+    LangChainInstrumentor().instrument()
+    print("LangChain instrumentation active. Exporting to http://localhost:6006/v1/traces")
+except Exception as e:
+    print(f"Observability initialization failed: {e}")
+# ------------------------------------------
+
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from agents.supervisor_agent import create_supervisor_agent
 from langchain.callbacks.base import BaseCallbackHandler
 from typing import Any, Dict, List
+import phoenix as px
 
 VERSION = "v4.1"
 
@@ -23,12 +35,14 @@ app.add_middleware(
 )
 
 # Initialize agent ONCE at global level
+print("Connecting to Arize Phoenix Observability...")
+
 print(f"--- backend_server.py {VERSION} Global Startup ---")
 try:
     global_agent = create_supervisor_agent()
-    print("✅ Global Agent initialized successfully.")
+    print("Global Agent initialized successfully.")
 except Exception as e:
-    print(f"❌ Global Agent initialization FAILED: {e}")
+    print(f"Global Agent initialization FAILED: {e}")
     global_agent = None
 
 class StreamThinkingHandler(BaseCallbackHandler):

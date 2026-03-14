@@ -16,7 +16,7 @@ MYSQL_CONFIG = {
 
 # Neo4j Configuration
 NEO4J_CONFIG = {
-    "uri": "neo4j+s://91202a22.databases.neo4j.io",
-    "user": "neo4j",
-    "password": "8OzBvCYXTU9jlKQDjiszyn-ATOGd6RTOvoBRjKuJW8w"
+    "uri": "neo4j+s://46991046.databases.neo4j.io",
+    "user": "46991046",
+    "password": "bT3ebt7nA6Cbz3CofkpdMfKBgVxUW7vJmpJOKverdu8"
 }

@@ -263,5 +263,50 @@ We use **Arize Phoenix** for OpenTelemetry instrumentation.
 
 ---
 
-## 20. Conclusion
+## 20. How to Run the System
+
+To ensure all features (including tracing) are functioning correctly, start the services in the following order:
+
+1.  **Observability Server**: 
+    ```bash
+    python -m phoenix.server.main serve
+    ```
+    *Access at http://localhost:6006*
+
+2.  **MCP Tool Server**:
+    ```bash
+    python mcp_server.py
+    ```
+    *Wait for "Application startup complete" (Port 8000)*
+
+3.  **Backend Agent Server**:
+    ```bash
+    python backend_server.py
+    ```
+    *Wait for "Uvicorn running on http://0.0.0.0:8002"*
+
+4.  **Frontend UI**:
+    ```bash
+    cd talk2data
+    npm start
+    ```
+
+---
+
+## 🛠️ Troubleshooting & Recovery
+
+### 1. Port Conflicts (WinError 10048 / 4317)
+If you see errors like "Failed to bind to address" or "Address already in use", it means a previous session didn't close correctly.
+- **Solution**: Run this command in PowerShell to clear all zombie Python processes:
+  ```powershell
+  Stop-Process -Name python -Force -ErrorAction SilentlyContinue
+  ```
+
+### 2. Groq Rate Limits (Error 429)
+If you hit a "Rate limit reached" error for the `70b` model:
+- **Solution**: Open `.env` and switch `GROQ_MODEL` to `llama-3.1-8b-instant`. This smaller model has much higher limits and responds faster for testing.
+
+---
+
+## 21. Conclusion
 The FMCG BI Chatbot is a robust, production-ready blueprint for AI-driven analytics. By combining a reliable semantic layer with a transparent, streaming UI, it provides a seamless and trustworthy data experience for business users.

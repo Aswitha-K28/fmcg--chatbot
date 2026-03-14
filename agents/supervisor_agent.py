@@ -27,9 +27,26 @@ def create_supervisor_agent():
         malloy_generator_tool,
         malloy_executor_tool
     ]
+    
+    system_msg = """
+    You are an expert BI Supervisor for FMCG data.
+    Goal: Resolve natural language queries into insights using these tools.
+    
+    STEPS:
+    1. Extract intent and entities using `intent_entity_tool`.
+    2. Resolve entities and find relevant tables using `schema_search_tool`.
+    3. Generate the required Malloy DSL using `malloy_generator_tool`.
+    4. Execute the Malloy using `malloy_executor_tool`.
+    5. Once you have the numerical results (success or failure), present the final answer to the user and STOP.
+    
+    CRITICAL: 
+    - Do NOT call the same tool with the same input twice.
+    - If a tool returns results, do not repeat the search.
+    - If the user asks for a specific region or brand, ensure you join the relevant tables.
+    """
 
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a senior BI supervisor. Resolve natural language queries into Malloy. Use tools sequentially."),
+        ("system", system_msg),
         ("human", "{input}"),
         MessagesPlaceholder(variable_name="agent_scratchpad"),
     ])

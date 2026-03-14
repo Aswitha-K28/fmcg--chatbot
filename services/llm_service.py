@@ -27,7 +27,7 @@ class LLMService:
         """
         return self.chat_completion(system_prompt, user_query)
 
-    def generate_malloy(self, user_query, schema_context, semantic_context):
+    def generate_malloy(self, user_query, schema_context, recommended_tables):
         system_prompt = f"""
         You are a Malloy expert. Generate a Malloy query based on the user question and context.
         Reference the 'fmcg.malloy' model.
@@ -35,8 +35,8 @@ class LLMService:
         SCHEMA CONTEXT:
         {schema_context}
         
-        SEMANTIC CONTEXT (Resolved Entities/Paths):
-        {semantic_context}
+        RECOMMENDED TABLES (From Search algorithms, ordered by relevance):
+        {recommended_tables}
         
         Return ONLY the Malloy code block.
         """
